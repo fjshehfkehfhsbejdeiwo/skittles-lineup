@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1b5e20">
+<title>🍬 Skittles Lineup</title>
+<style>
+  :root{
+    --green:#8e24aa;
+    --green2:#ec407a;
+    --green-light:#fce4ec;
+    --amber:#fb8c00;
+    --red:#e53935;
+    --gray:#78909c;
+    --bg:#fbf5ff;
+    --card:#ffffff;
+    --text:#241a2e;
+    --sub:#71617c;
+    --border:#ecdcf2;
+    --rainbow:linear-gradient(90deg,#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa,#ec407a);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom));}
+  header.top{
+    position:sticky; top:0; z-index:20;
+    background:var(--rainbow); color:#fff;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+    box-shadow:0 2px 8px rgba(0,0,0,.22);
+  }
+  header.top h1{font-size:18px; margin:0; font-weight:800; letter-spacing:.3px; text-shadow:0 1px 3px rgba(0,0,0,.35);}
+  header.top .gamesub{font-size:11.5px; opacity:.95; margin-top:2px; text-shadow:0 1px 3px rgba(0,0,0,.35);}
+  main#app{padding:12px; max-width:640px; margin:0 auto;}
+  nav.tabbar{
+    position:fixed; bottom:0; left:0; right:0; z-index:30;
+    display:flex; background:#fff; border-top:3px solid transparent;
+    border-image:var(--rainbow) 1;
+    padding-bottom:env(safe-area-inset-bottom);
+    box-shadow:0 -2px 8px rgba(0,0,0,.08);
+  }
+  nav.tabbar button{
+    flex:1; background:none; border:none; padding:9px 2px 8px;
+    font-size:10.5px; color:var(--sub); display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  nav.tabbar button .ico{font-size:19px;}
+  nav.tabbar button.active{color:var(--green);}
+  nav.tabbar button.active .ico{transform:scale(1.05);}
+  h2.section{font-size:15px; margin:18px 0 8px; color:var(--green); text-transform:uppercase; letter-spacing:.4px;}
+  h2.section:first-child{margin-top:0;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:10px;}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    background:linear-gradient(135deg,#ec407a,#8e24aa); color:#fff; border:none; border-radius:12px;
+    padding:11px 14px; font-size:14px; font-weight:700; cursor:pointer;
+    min-height:42px; box-shadow:0 2px 0 rgba(0,0,0,.12);
+  }
+  .btn:active{filter:brightness(.94); transform:translateY(1px); box-shadow:none;}
+  .btn.secondary{background:#fff; color:var(--green2); border:1.5px solid var(--green2); box-shadow:none;}
+  .btn.amber{background:var(--amber);}
+  .btn.red{background:var(--red);}
+  .btn.gray{background:var(--gray);}
+  .btn.small{padding:7px 10px; font-size:12.5px; min-height:32px; border-radius:8px;}
+  .btn.block{width:100%;}
+  .btn:disabled{opacity:.45;}
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap;}
+  input[type=text], input[type=date], input[type=number], select{
+    width:100%; padding:10px 10px; border:1.5px solid var(--border); border-radius:9px;
+    font-size:15px; background:#fff; color:var(--text);
+  }
+  label.field{display:block; font-size:12.5px; color:var(--sub); margin:10px 0 4px; font-weight:600;}
+  .playerchip{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; margin-bottom:7px;
+    background:#fff;
+  }
+  .playerchip.selected{border-color:var(--green2); background:var(--green-light);}
+  .playerchip .name{font-weight:600; font-size:14.5px;}
+  .playerchip .tag{font-size:10.5px; color:var(--sub);}
+  .pill{display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; background:#eee; color:#555; margin-left:6px;}
+  .pill.pitcher{background:#fff3e0; color:var(--amber);}
+  .pill.inactive{background:#eee; color:#999;}
+  .checkbox{width:22px; height:22px; accent-color:var(--green2);}
+  .inningcard{border:1.5px solid var(--border); border-radius:12px; padding:10px; margin-bottom:12px; background:#fff;}
+  .inningcard.current{border-color:var(--green2); box-shadow:0 0 0 2px var(--green-light);}
+  .inningcard h3{margin:0 0 8px; font-size:14px; color:var(--green);}
+  .poslist{display:grid; grid-template-columns:1fr; gap:6px;}
+  .posrow{
+    display:flex; align-items:center; justify-content:space-between;
+    background:#fafafa; border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+  }
+  .posrow .poslabel{font-size:11px; font-weight:800;
+    width:32px; text-align:center; border-radius:6px; padding:3px 0; flex-shrink:0;}
+  .posrow .pname{flex:1; margin-left:10px; font-size:14px; font-weight:600;}
+  .posrow .empty{color:#bbb; font-style:italic; font-weight:400;}
+  .benchbox{margin-top:8px; padding:8px 10px; background:#f5f5f5; border-radius:8px; font-size:13px;}
+  .benchbox b{color:var(--gray);}
+  .benchname{display:inline-block; background:#fff; border:1px solid var(--border); border-radius:20px; padding:3px 10px; margin:3px 4px 0 0; font-size:12.5px;}
+  .toolbar{display:flex; gap:6px; margin-top:9px; flex-wrap:wrap;}
+  .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:50; display:flex; align-items:flex-end;}
+  .modal{background:#fff; width:100%; border-radius:16px 16px 0 0; padding:16px; padding-bottom:calc(20px + env(safe-area-inset-bottom)); max-height:80vh; overflow-y:auto;}
+  .modal h3{margin-top:0;}
+  .modal .opt{padding:12px 10px; border-bottom:1px solid var(--border); font-size:15px; display:flex; justify-content:space-between; cursor:pointer;}
+  .modal .opt:active{background:var(--green-light);}
+  .banner{padding:10px 12px; border-radius:10px; font-size:13px; margin-bottom:10px;}
+  .banner.info{background:#e3f2fd; color:#1565c0;}
+  .banner.warn{background:#fff3e0; color:#e65100;}
+  .banner.ok{background:var(--green-light); color:var(--green);}
+  .empty-state{text-align:center; color:var(--sub); padding:30px 10px; font-size:14px;}
+  .statgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px;}
+  .statbox{background:#fafafa; border:1px solid var(--border); border-radius:8px; padding:6px; text-align:center;}
+  .statbox b{display:block; font-size:16px; color:var(--green);}
+  .statbox span{font-size:10px; color:var(--sub);}
+  .poschips{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;}
+  .poschip{background:#fff; border:1px solid var(--border); border-radius:7px; padding:4px 7px; font-size:11px;}
+  .poschip b{color:var(--green2);}
+  details.playerstat summary{font-weight:700; font-size:14.5px; padding:4px 0; cursor:pointer; list-style:none;}
+  details.playerstat summary::-webkit-details-marker{display:none;}
+  details.playerstat summary:before{content:"▸ "; color:var(--green2);}
+  details.playerstat[open] summary:before{content:"▾ ";}
+  .battingrow{display:flex; align-items:center; gap:10px; padding:10px; border:1.5px solid var(--border); border-radius:10px; margin-bottom:7px; background:#fff;}
+  .battingrow.marked{border-color:var(--amber); background:#fff8ef;}
+  .battingrow .num{width:24px; height:24px; border-radius:50%; background:var(--green2); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .battingrow .bname{flex:1; font-weight:600; font-size:14.5px;}
+  .linkbtn{background:none;border:none;color:var(--green2);font-weight:700;font-size:13px;padding:6px;}
+  .sub{color:var(--sub); font-size:12.5px;}
+  hr{border:none; border-top:1px solid var(--border); margin:12px 0;}
+  .danger-zone{margin-top:26px; border:1.5px dashed #e0a0a0; border-radius:12px; padding:12px;}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>🍬 Skittles Lineup</h1>
+    <div class="gamesub" id="headerSub"></div>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<div id="modalRoot"></div>
+
+<nav class="tabbar">
+  <button data-tab="roster"><span class="ico">👥</span>Roster</button>
+  <button data-tab="game"><span class="ico">🆕</span>Game</button>
+  <button data-tab="field"><span class="ico">🧢</span>Field</button>
+  <button data-tab="batting"><span class="ico">🥎</span>Batting</button>
+  <button data-tab="stats"><span class="ico">📊</span>Stats</button>
+</nav>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- constants ---------------- */
+const POS_FIELD = ['C','1B','2B','3B','SS','LF','RF','CF'];
+const POS_ALL = ['P', ...POS_FIELD];
+const STORAGE_KEY = 'lineupAppData_v1';
+const POS_COLORS = {
+  P:'#fb8c00', C:'#8e24aa', '1B':'#e53935', '2B':'#43a047', '3B':'#1e88e5',
+  SS:'#d81b60', LF:'#fdd835', RF:'#00acc1', CF:'#7cb342'
+};
+const POS_TEXT = { LF:'#3a3a00' };
+
+/* ---------------- storage ---------------- */
+function uid(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2);
+}
+function defaultDB(){
+  return { roster: [], games: [], currentGameId: null, activeTab: 'roster' };
+}
+let db = loadDB();
+function loadDB(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultDB();
+    const parsed = JSON.parse(raw);
+    return Object.assign(defaultDB(), parsed);
+  }catch(e){ console.error('load failed', e); return defaultDB(); }
+}
+let storageBroken = false;
+function saveDB(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+  catch(e){ console.error('save failed', e); storageBroken = true; }
+}
+
+function getPlayer(id){ return db.roster.find(p=>p.id===id); }
+function playerName(id){ const p=getPlayer(id); return p ? p.name : '(removed)'; }
+function activeRoster(){ return db.roster.filter(p=>p.active); }
+function getGame(id){ return db.games.find(g=>g.id===id); }
+function getActiveGame(){ return db.currentGameId ? getGame(db.currentGameId) : null; }
+
+/* ---------------- stats engine ---------------- */
+function blankStatEntry(){ return { positions:{}, bench:0, totalInnings:0, games:0 }; }
+
+function computeBaseStats(excludeGameId){
+  const stats = {};
+  for (const p of db.roster) stats[p.id] = blankStatEntry();
+  for (const g of db.games){
+    if (g.id === excludeGameId) continue;
+    for (const pid of (g.availableIds||[])){
+      if (!stats[pid]) stats[pid] = blankStatEntry();
+      stats[pid].games++;
+    }
+    for (const key of Object.keys(g.fieldByInning||{})){
+      const entry = g.fieldByInning[key];
+      if (!entry) continue;
+      if (entry._pitcher){
+        if (!stats[entry._pitcher]) stats[entry._pitcher] = blankStatEntry();
+        addInningToStats(stats, entry._pitcher, 'P');
+      }
+      for (const pos of POS_FIELD){
+        const pid = entry[pos];
+        if (pid){
+          if (!stats[pid]) stats[pid] = blankStatEntry();
+          addInningToStats(stats, pid, pos);
+        }
+      }
+      for (const pid of (entry._bench||[])){
+        if (!stats[pid]) stats[pid] = blankStatEntry();
+        stats[pid].bench++;
+      }
+    }
+  }
+  return stats;
+}
+function addInningToStats(stats, pid, pos){
+  const s = stats[pid];
+  s.positions[pos] = (s.positions[pos]||0) + 1;
+  s.totalInnings++;
+}
+function cloneStats(stats){
+  const out = {};
+  for (const k of Object.keys(stats)){
+    out[k] = { positions: Object.assign({}, stats[k].positions), bench: stats[k].bench, totalInnings: stats[k].totalInnings, games: stats[k].games };
+  }
+  return out;
+}
+
+/* ---------------- lineup generation engine ---------------- */
+function pickBench(pool, statsMap, alreadyBenchedThisGame, benchNeeded){
+  if (benchNeeded <= 0) return [];
+  let candidates = pool.filter(pid => !alreadyBenchedThisGame.has(pid));
+  let forced = false;
+  if (candidates.length < benchNeeded){ candidates = pool.slice(); forced = true; }
+  const scored = candidates.map(pid => ({ pid, score: (statsMap[pid] ? statsMap[pid].bench : 0) + Math.random()*0.5 }));
+  scored.sort((a,b)=>a.score-b.score);
+  const chosen = scored.slice(0, benchNeeded).map(s=>s.pid);
+  return { chosen, forced };
+}
+function assignPositions(pool, statsMap){
+  const pairs = [];
+  for (const pid of pool){
+    const s = statsMap[pid] || blankStatEntry();
+    const total = s.totalInnings;
+    for (const pos of POS_FIELD){
+      const pct = total > 0 ? ((s.positions[pos]||0) / total) : 0;
+      pairs.push({ pid, pos, score: pct + Math.random()*0.22 });
+    }
+  }
+  pairs.sort((a,b)=>a.score-b.score);
+  const assigned = {};
+  const usedPlayers = new Set();
+  const usedPositions = new Set();
+  for (const pr of pairs){
+    if (usedPlayers.has(pr.pid) || usedPositions.has(pr.pos)) continue;
+    assigned[pr.pos] = pr.pid;
+    usedPlayers.add(pr.pid);
+    usedPositions.add(pr.pos);
+    if (usedPlayers.size === pool.length && usedPositions.size === POS_FIELD.length) break;
+  }
+  return assigned;
+}
+function benchedSetBefore(game, inningNum){
+  const s = new Set();
+  for (let k=1; k<inningNum; k++){
+    const entry = game.fieldByInning[k];
+    if (entry) for (const pid of (entry._bench||[])) s.add(pid);
+  }
+  return s;
+}
+function generateInning(game, i, cumulativeStats){
+  const pitcherId = (game.pitcherByInning && game.pitcherByInning[i]) || null;
+  const outSet = new Set(game.outIds||[]);
+  const pool = (game.availableIds||[]).filter(pid => pid!==pitcherId && !outSet.has(pid));
+  const already = benchedSetBefore(game, i);
+  const benchNeeded = Math.max(0, pool.length - POS_FIELD.length);
+  const benchResult = pickBench(pool, cumulativeStats, already, benchNeeded);
+  const bench = benchResult.chosen;
+  const benchSet = new Set(bench);
+  const fieldPool = pool.filter(pid => !benchSet.has(pid));
+  const assigned = assignPositions(fieldPool, cumulativeStats);
+  game.fieldByInning[i] = Object.assign({}, assigned, { _bench: bench, _pitcher: pitcherId, _forcedRepeatBench: benchResult.forced });
+  if (pitcherId){ if(!cumulativeStats[pitcherId]) cumulativeStats[pitcherId]=blankStatEntry(); addInningToStats(cumulativeStats, pitcherId, 'P'); }
+  for (const pos of POS_FIELD){
+    const pid = assigned[pos];
+    if (pid){ if(!cumulativeStats[pid]) cumulativeStats[pid]=blankStatEntry(); addInningToStats(cumulativeStats, pid, pos); }
+  }
+  for (const pid of bench){ if(!cumulativeStats[pid]) cumulativeStats[pid]=blankStatEntry(); cumulativeStats[pid].bench++; }
+}
+function generateAllInnings(game){
+  const base = computeBaseStats(game.id);
+  game.fieldByInning = {};
+  for (let i=1; i<=game.innings; i++) generateInning(game, i, base);
+}
+function statsThroughInning(game, uptoExclusive){
+  const base = computeBaseStats(game.id);
+  for (let k=1; k<uptoExclusive; k++){
+    const entry = game.fieldByInning[k];
+    if (!entry) continue;
+    if (entry._pitcher){ if(!base[entry._pitcher]) base[entry._pitcher]=blankStatEntry(); addInningToStats(base, entry._pitcher, 'P'); }
+    for (const pos of POS_FIELD){ const pid=entry[pos]; if(pid){ if(!base[pid]) base[pid]=blankStatEntry(); addInningToStats(base, pid, pos);} }
+    for (const pid of (entry._bench||[])){ if(!base[pid]) base[pid]=blankStatEntry(); base[pid].bench++; }
+  }
+  return base;
+}
+function regenerateFromInning(game, startInning){
+  const base = statsThroughInning(game, startInning);
+  for (let i=startInning; i<=game.innings; i++){ delete game.fieldByInning[i]; }
+  for (let i=startInning; i<=game.innings; i++){ generateInning(game, i, base); }
+}
+function regenerateSingleInning(game, i){
+  const base = statsThroughInning(game, i);
+  delete game.fieldByInning[i];
+  generateInning(game, i, base);
+}
+
+/* ---------------- helpers ---------------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function fmtDate(s){ if(!s) return ''; const [y,m,d]=s.split('-'); return `${m}/${d}/${y}`; }
+
+/* ---------------- modal ---------------- */
+function showModal(title, optionsHtml, onRender){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="modal-backdrop" data-close-modal>
+    <div class="modal">
+      <h3>${esc(title)}</h3>
+      ${optionsHtml}
+      <button class="btn secondary block" style="margin-top:10px" data-close-modal>Cancel</button>
+    </div>
+  </div>`;
+  root.querySelector('.modal-backdrop').addEventListener('click', (e)=>{
+    if (e.target.hasAttribute('data-close-modal')) closeModal();
+  });
+  if (onRender) onRender(root);
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+/* ---------------- render: shell ---------------- */
+function render(){
+  document.querySelectorAll('nav.tabbar button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===db.activeTab);
+  });
+  const g = getActiveGame();
+  document.getElementById('headerSub').textContent = g ? `${fmtDate(g.date)}${g.opponent? ' vs '+g.opponent:''} · Inning ${g.currentInning||1}/${g.innings}` : 'No active game';
+  const app = document.getElementById('app');
+  let body = '';
+  switch(db.activeTab){
+    case 'roster': body = renderRoster(); break;
+    case 'game': body = renderGameSetup(); break;
+    case 'field': body = renderField(); break;
+    case 'batting': body = renderBatting(); break;
+    case 'stats': body = renderStats(); break;
+  }
+  const storageWarning = storageBroken
+    ? `<div class="banner warn">⚠️ This browser is blocking local saving (common when opening the file directly instead of a web link). Your changes won't be remembered after you close the page. Open the hosted link instead if you have one.</div>`
+    : '';
+  app.innerHTML = storageWarning + body;
+}
+
+/* ---------------- render: roster ---------------- */
+function renderRoster(){
+  let rows = db.roster.map(p=>`
+    <div class="playerchip">
+      <div>
+        <span class="name">${esc(p.name)}</span>
+        ${p.eligiblePitcher?'<span class="pill pitcher">PITCHER</span>':''}
+        ${!p.active?'<span class="pill inactive">INACTIVE</span>':''}
+      </div>
+      <div class="btnrow">
+        <button class="btn small secondary" data-action="togglePitcher" data-id="${p.id}">${p.eligiblePitcher?'Unset P':'Set P'}</button>
+        <button class="btn small ${p.active?'gray':'secondary'}" data-action="toggleActive" data-id="${p.id}">${p.active?'Remove':'Restore'}</button>
+      </div>
+    </div>`).join('');
+  if (!db.roster.length) rows = `<div class="empty-state">No players yet. Add your season roster below to get started.</div>`;
+  return `
+    <h2 class="section">Season Roster</h2>
+    <div class="card">
+      <label class="field">Add Player</label>
+      <div class="row" style="gap:8px">
+        <input type="text" id="newPlayerName" placeholder="Player name">
+        <button class="btn" data-action="addPlayer">Add</button>
+      </div>
+      <div class="sub" style="margin-top:6px">Tap "Set P" to mark a girl as an eligible pitcher. "Remove" hides her from future game picks but keeps her stats.</div>
+    </div>
+    ${rows}
+    <div class="danger-zone">
+      <div class="sub" style="margin-bottom:8px"><b>Danger zone</b> — clears all roster, games and stats from this device.</div>
+      <button class="btn red small" data-action="resetAll">Reset All Data</button>
+    </div>
+  `;
+}
+
+/* ---------------- render: game setup ---------------- */
+function renderGameSetup(){
+  const g = getActiveGame();
+  if (g){
+    return `
+      <h2 class="section">Active Game</h2>
+      <div class="card">
+        <div class="row"><b>${fmtDate(g.date)}</b><span class="sub">${g.opponent?('vs '+esc(g.opponent)):''}</span></div>
+        <div class="sub" style="margin-top:6px">${g.innings} innings · ${g.availableIds.length} players available</div>
+        <div class="btnrow" style="margin-top:12px">
+          <button class="btn secondary" data-action="goTab" data-tab="field">Go to Field Lineup</button>
+          <button class="btn secondary" data-action="goTab" data-tab="batting">Go to Batting Order</button>
+        </div>
+        <hr>
+        <button class="btn red block" data-action="endGame">End / Archive This Game</button>
+        <div class="sub" style="margin-top:6px">Archiving locks in today's stats and lets you start a new game.</div>
+      </div>
+    `;
+  }
+  const draft = db._draft || { date: todayStr(), opponent:'', innings:6, availableIds: activeRoster().map(p=>p.id), pitcherByInning:{} };
+  db._draft = draft;
+  const rows = activeRoster().map(p=>{
+    const sel = draft.availableIds.includes(p.id);
+    return `<div class="playerchip ${sel?'selected':''}" data-action="toggleAvail" data-id="${p.id}">
+      <div><span class="name">${esc(p.name)}</span>${p.eligiblePitcher?'<span class="pill pitcher">P</span>':''}</div>
+      <input type="checkbox" class="checkbox" ${sel?'checked':''} tabindex="-1" style="pointer-events:none">
+    </div>`;
+  }).join('') || `<div class="empty-state">Add players in the Roster tab first.</div>`;
+
+  const eligiblePitchers = draft.availableIds.map(getPlayer).filter(p=>p && p.eligiblePitcher);
+  let pitcherRows = '';
+  if (draft.availableIds.length){
+    for (let i=1;i<=draft.innings;i++){
+      const val = draft.pitcherByInning[i] || '';
+      const opts = eligiblePitchers.map(p=>`<option value="${p.id}" ${val===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+      pitcherRows += `<div class="row" style="margin-bottom:8px">
+        <label style="width:64px;font-weight:700;font-size:13px">Inning ${i}</label>
+        <select data-action="setPitcher" data-inning="${i}">
+          <option value="">— none set —</option>
+          ${opts}
+        </select>
+      </div>`;
+    }
+  }
+  const noPitchersWarning = draft.availableIds.length && !eligiblePitchers.length
+    ? `<div class="banner warn">No available players are marked as eligible pitchers yet. Set pitchers in the Roster tab.</div>` : '';
+
+  return `
+    <h2 class="section">New Game Setup</h2>
+    <div class="card">
+      <label class="field">Date</label>
+      <input type="date" id="gameDate" value="${draft.date}" data-action="setDraftDate">
+      <label class="field">Opponent (optional)</label>
+      <input type="text" id="gameOpp" value="${esc(draft.opponent)}" placeholder="e.g. Riverside" data-action="setDraftOpp">
+      <label class="field">Number of Innings</label>
+      <input type="number" min="1" max="9" value="${draft.innings}" data-action="setDraftInnings">
+    </div>
+
+    <h2 class="section">Who's Available Today?</h2>
+    <div class="btnrow" style="margin-bottom:8px">
+      <button class="btn small secondary" data-action="selectAllAvail">Select All</button>
+      <button class="btn small secondary" data-action="selectNoneAvail">Select None</button>
+    </div>
+    ${rows}
+
+    ${noPitchersWarning}
+    ${draft.availableIds.length ? `<h2 class="section">Set Pitchers Per Inning</h2><div class="card">${pitcherRows}</div>` : ''}
+
+    <button class="btn block" style="margin-top:14px" data-action="generateGame" ${draft.availableIds.length<1?'disabled':''}>
+      🎲 Generate Fielding Lineup &amp; Start Game
+    </button>
+  `;
+}
+
+/* ---------------- render: field ---------------- */
+function renderField(){
+  const g = getActiveGame();
+  if (!g) return `<div class="empty-state">No active game. Set one up in the <b>Game</b> tab.</div>`;
+
+  let out = '';
+  const outSet = new Set(g.outIds||[]);
+  const notAvail = activeRoster().filter(p=>!g.availableIds.includes(p.id));
+
+  out += `<h2 class="section">Live Roster Control</h2>
+  <div class="card">
+    <div class="row"><b>Current Inning: ${g.currentInning}</b>
+      <div class="btnrow">
+        <button class="btn small secondary" data-action="prevInning" ${g.currentInning<=1?'disabled':''}>◀ Prev</button>
+        <button class="btn small" data-action="nextInning" ${g.currentInning>=g.innings?'disabled':''}>Next ▶</button>
+      </div>
+    </div>
+    <hr>
+    <div class="sub" style="margin-bottom:6px">Mark a player OUT (injury) to bench her for remaining innings:</div>
+    ${g.availableIds.map(pid=>{
+      const isOut = outSet.has(pid);
+      return `<div class="playerchip ${isOut?'':''}" style="${isOut?'opacity:.55':''}">
+        <span class="name">${esc(playerName(pid))} ${isOut?'<span class="pill" style="background:#ffebee;color:var(--red)">OUT</span>':''}</span>
+        <button class="btn small ${isOut?'secondary':'red'}" data-action="toggleOut" data-id="${pid}">${isOut?'Mark In':'Mark Out'}</button>
+      </div>`;
+    }).join('')}
+    ${notAvail.length? `<hr><div class="sub" style="margin-bottom:6px">Add a late arrival:</div>
+      <select data-action="addLateArrival"><option value="">+ Add player…</option>
+      ${notAvail.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+      </select>` : ''}
+  </div>`;
+
+  for (let i=1;i<=g.innings;i++){
+    const entry = g.fieldByInning[i];
+    const isCurrent = i===g.currentInning;
+    out += `<div class="inningcard ${isCurrent?'current':''}">
+      <h3>Inning ${i} ${isCurrent?'· current':''}</h3>`;
+    if (!entry){
+      out += `<div class="empty-state" style="padding:14px">Not generated</div>`;
+    } else {
+      const posrow = (pos, isPitcher)=>{
+        const pid = isPitcher ? entry._pitcher : entry[pos];
+        const label = isPitcher ? 'P' : pos;
+        const bg = POS_COLORS[label] || 'var(--green2)';
+        const fg = POS_TEXT[label] || '#fff';
+        return `<div class="posrow" data-action="openSwap" data-inning="${i}" data-pos="${pos}" data-ispitcher="${isPitcher?1:0}">
+          <span class="poslabel" style="background:${bg};color:${fg}">${label}</span>
+          <span class="pname ${pid?'':'empty'}">${pid? esc(playerName(pid)) : 'unfilled'}</span>
+          <span class="sub">✎</span>
+        </div>`;
+      };
+      out += `<div class="poslist">${posrow(null,true)}${POS_FIELD.map(p=>posrow(p,false)).join('')}</div>`;
+      out += `<div class="benchbox"><b>Bench:</b> ${
+        (entry._bench&&entry._bench.length) ? entry._bench.map(pid=>`<span class="benchname">${esc(playerName(pid))}</span>`).join('') : '<span class="sub">none</span>'
+      }${entry._forcedRepeatBench? ' <div class="banner warn" style="margin-top:6px">Not enough players to avoid a 2nd bench inning for someone.</div>':''}</div>`;
+      out += `<div class="toolbar">
+        <button class="btn small secondary" data-action="reshuffleInning" data-inning="${i}">🔀 Reshuffle This Inning</button>
+        <button class="btn small secondary" data-action="reshuffleFrom" data-inning="${i}">⏩ Reshuffle From Here to End</button>
+      </div>`;
+    }
+    out += `</div>`;
+  }
+  return out;
+}
+
+/* ---------------- render: batting ---------------- */
+function renderBatting(){
+  const g = getActiveGame();
+  if (!g) return `<div class="empty-state">No active game. Set one up in the <b>Game</b> tab.</div>`;
+  if (!g.battingOrder || !g.battingOrder.length){
+    return `<div class="card">
+      <div class="sub" style="margin-bottom:10px">Generate a random batting order for today's available players.</div>
+      <button class="btn block" data-action="genBatting">🎲 Generate Batting Order</button>
+    </div>`;
+  }
+  const lastIdx = (g.lastOutIndex==null) ? null : g.lastOutIndex;
+  const nextIdx = lastIdx==null ? 0 : (lastIdx+1) % g.battingOrder.length;
+  const nextName = playerName(g.battingOrder[nextIdx]);
+  let rows = g.battingOrder.map((pid,idx)=>`
+    <div class="battingrow ${idx===lastIdx?'marked':''}" data-action="markLastOut" data-idx="${idx}">
+      <div class="num">${idx+1}</div>
+      <div class="bname">${esc(playerName(pid))} ${idx===nextIdx?'<span class="pill" style="background:var(--green-light);color:var(--green)">UP NEXT INNING</span>':''}</div>
+      ${idx===lastIdx?'<span class="pill" style="background:#fff3e0;color:var(--amber)">LAST OUT</span>':''}
+    </div>`).join('');
+  return `
+    <div class="banner ok">Next inning leadoff: <b>${esc(nextName)}</b></div>
+    <div class="sub" style="margin-bottom:10px">Tap a batter to mark her as the one who made the last out of the inning.</div>
+    ${rows}
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn secondary" data-action="genBatting">🔀 Reshuffle Order</button>
+      <button class="btn secondary" data-action="clearLastOut">Clear Marker</button>
+    </div>
+  `;
+}
+
+/* ---------------- render: stats ---------------- */
+function renderStats(){
+  const stats = computeBaseStats(null);
+  const players = db.roster.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  if (!players.length) return `<div class="empty-state">No players yet.</div>`;
+  const cards = players.map(p=>{
+    const s = stats[p.id] || blankStatEntry();
+    const posChips = POS_ALL.map(pos=>{
+      const n = s.positions[pos]||0;
+      const pct = s.totalInnings>0 ? Math.round(100*n/s.totalInnings) : 0;
+      return `<span class="poschip" style="border-left:4px solid ${POS_COLORS[pos]}">${pos}: <b>${n}</b>${s.totalInnings>0?` (${pct}%)`:''}</span>`;
+    }).join('');
+    return `<details class="playerstat card">
+      <summary>${esc(p.name)}${!p.active?' <span class="pill inactive">INACTIVE</span>':''}</summary>
+      <div class="statgrid">
+        <div class="statbox"><b>${s.games}</b><span>Games</span></div>
+        <div class="statbox"><b>${s.totalInnings}</b><span>Field Innings</span></div>
+        <div class="statbox"><b>${s.bench}</b><span>Bench Innings</span></div>
+      </div>
+      <div class="poschips">${posChips}</div>
+    </details>`;
+  }).join('');
+  return `<h2 class="section">Season Stats</h2>${cards}`;
+}
+
+/* ---------------- swap modal ---------------- */
+function openSwapModal(inning, pos, isPitcher){
+  const g = getActiveGame();
+  const entry = g.fieldByInning[inning];
+  if (!entry) return;
+  if (isPitcher){
+    showModal(`Swap Pitcher — Inning ${inning}`, `<div class="sub">Pitchers are locked manually. Go to the Game tab setup to change, or edit below for this inning only.</div>
+      <div class="opt" data-swap-target="__none__">— none —</div>
+      ${g.availableIds.filter(pid=>{const p=getPlayer(pid); return p && p.eligiblePitcher;}).map(pid=>`<div class="opt" data-swap-target="${pid}">${esc(playerName(pid))}</div>`).join('')}
+    `, (root)=>{
+      root.querySelectorAll('[data-swap-target]').forEach(el=>{
+        el.addEventListener('click', ()=>{
+          const target = el.getAttribute('data-swap-target');
+          entry._pitcher = target==='__none__'? null : target;
+          saveDB(); closeModal(); render();
+        });
+      });
+    });
+    return;
+  }
+  const outSet = new Set(g.outIds||[]);
+  const pool = g.availableIds.filter(pid=>!outSet.has(pid) && pid!==entry._pitcher);
+  const currentPid = entry[pos];
+  const options = pool.map(pid=>{
+    let loc = 'BENCH';
+    for (const pp of POS_FIELD){ if (entry[pp]===pid){ loc = pp; break; } }
+    return {pid, loc};
+  });
+  const html = options.map(o=>`<div class="opt" data-swap-target="${o.pid}">
+      <span>${esc(playerName(o.pid))}</span><span class="sub">${o.loc}</span>
+    </div>`).join('');
+  showModal(`Assign ${pos} — Inning ${inning}`, html || '<div class="sub">No eligible players.</div>', (root)=>{
+    root.querySelectorAll('[data-swap-target]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const targetPid = el.getAttribute('data-swap-target');
+        swapPlayers(entry, pos, currentPid, targetPid);
+        saveDB(); closeModal(); render();
+      });
+    });
+  });
+}
+function swapPlayers(entry, pos, currentPid, targetPid){
+  let targetLoc = null;
+  for (const pp of POS_FIELD){ if (entry[pp]===targetPid){ targetLoc = pp; break; } }
+  if (targetLoc===null && entry._bench.includes(targetPid)) targetLoc = 'BENCH';
+  entry[pos] = targetPid;
+  if (targetLoc==='BENCH'){
+    entry._bench = entry._bench.filter(x=>x!==targetPid);
+    if (currentPid) entry._bench.push(currentPid);
+  } else if (targetLoc){
+    entry[targetLoc] = currentPid || null;
+  }
+}
+
+/* ---------------- actions ---------------- */
+function confirmAction(msg){ return window.confirm(msg); }
+
+document.addEventListener('click', (e)=>{
+  const navBtn = e.target.closest('nav.tabbar button');
+  if (navBtn){ db.activeTab = navBtn.dataset.tab; saveDB(); render(); return; }
+
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+
+  switch(action){
+    case 'addPlayer': {
+      const input = document.getElementById('newPlayerName');
+      const name = input.value.trim();
+      if (!name) return;
+      db.roster.push({ id: uid(), name, active:true, eligiblePitcher:false });
+      input.value='';
+      saveDB(); render();
+      break;
+    }
+    case 'togglePitcher': {
+      const p = getPlayer(el.dataset.id); if(p){ p.eligiblePitcher = !p.eligiblePitcher; saveDB(); render(); }
+      break;
+    }
+    case 'toggleActive': {
+      const p = getPlayer(el.dataset.id); if(p){ p.active = !p.active; saveDB(); render(); }
+      break;
+    }
+    case 'resetAll': {
+      if (confirmAction('This will permanently erase the roster, all games, and all stats from this device. Continue?')){
+        db = defaultDB(); saveDB(); render();
+      }
+      break;
+    }
+    case 'goTab': { db.activeTab = el.dataset.tab; saveDB(); render(); break; }
+    case 'endGame': {
+      if (confirmAction('End and archive this game? Stats stay saved; you can start a new game after.')){
+        db.currentGameId = null; db._draft = null; saveDB(); render();
+      }
+      break;
+    }
+    case 'toggleAvail': {
+      const draft = db._draft; const id = el.dataset.id;
+      const idx = draft.availableIds.indexOf(id);
+      if (idx>=0) draft.availableIds.splice(idx,1); else draft.availableIds.push(id);
+      saveDB(); render();
+      break;
+    }
+    case 'selectAllAvail': { db._draft.availableIds = activeRoster().map(p=>p.id); saveDB(); render(); break; }
+    case 'selectNoneAvail': { db._draft.availableIds = []; saveDB(); render(); break; }
+    case 'generateGame': {
+      const draft = db._draft;
+      if (!draft.availableIds.length) return;
+      const game = {
+        id: uid(), date: draft.date, opponent: draft.opponent, innings: Number(draft.innings)||6,
+        availableIds: draft.availableIds.slice(), pitcherByInning: Object.assign({}, draft.pitcherByInning),
+        fieldByInning: {}, outIds: [], currentInning: 1,
+        battingOrder: [], lastOutIndex: null
+      };
+      generateAllInnings(game);
+      db.games.push(game);
+      db.currentGameId = game.id;
+      db._draft = null;
+      db.activeTab = 'field';
+      saveDB(); render();
+      break;
+    }
+    case 'toggleOut': {
+      const g = getActiveGame(); const id = el.dataset.id;
+      const set = new Set(g.outIds||[]);
+      if (set.has(id)) set.delete(id); else set.add(id);
+      g.outIds = Array.from(set);
+      if (confirmAction('Reshuffle remaining innings (from the current inning onward) to reflect this change?')){
+        regenerateFromInning(g, g.currentInning);
+      }
+      saveDB(); render();
+      break;
+    }
+    case 'prevInning': { const g=getActiveGame(); g.currentInning=Math.max(1,g.currentInning-1); saveDB(); render(); break; }
+    case 'nextInning': { const g=getActiveGame(); g.currentInning=Math.min(g.innings,g.currentInning+1); saveDB(); render(); break; }
+    case 'openSwap': {
+      openSwapModal(Number(el.dataset.inning), el.dataset.pos, el.dataset.ispitcher==='1');
+      break;
+    }
+    case 'reshuffleInning': {
+      const g = getActiveGame(); const i = Number(el.dataset.inning);
+      regenerateSingleInning(g, i);
+      saveDB(); render();
+      break;
+    }
+    case 'reshuffleFrom': {
+      const g = getActiveGame(); const i = Number(el.dataset.inning);
+      if (confirmAction(`Reshuffle innings ${i} through ${g.innings}? Earlier innings stay as-is.`)){
+        regenerateFromInning(g, i);
+        saveDB(); render();
+      }
+      break;
+    }
+    case 'genBatting': {
+      const g = getActiveGame();
+      const doIt = ()=>{
+        const arr = g.availableIds.slice();
+        for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+        g.battingOrder = arr; g.lastOutIndex = null;
+        saveDB(); render();
+      };
+      if (g.battingOrder && g.battingOrder.length){
+        if (confirmAction('Reshuffle the batting order? This clears the "last out" marker.')) doIt();
+      } else doIt();
+      break;
+    }
+    case 'markLastOut': {
+      const g = getActiveGame(); const idx = Number(el.dataset.idx);
+      g.lastOutIndex = (g.lastOutIndex===idx) ? null : idx;
+      saveDB(); render();
+      break;
+    }
+    case 'clearLastOut': { const g=getActiveGame(); g.lastOutIndex=null; saveDB(); render(); break; }
+  }
+});
+
+document.addEventListener('change', (e)=>{
+  const t = e.target;
+  if (t.id==='gameDate'){ db._draft.date = t.value; saveDB(); return; }
+  if (t.id==='gameOpp'){ db._draft.opponent = t.value; saveDB(); return; }
+  if (t.dataset.action==='setDraftInnings'){
+    let n = Math.max(1, Math.min(9, Number(t.value)||6));
+    db._draft.innings = n; saveDB(); render(); return;
+  }
+  if (t.dataset.action==='setPitcher'){
+    const inning = Number(t.dataset.inning);
+    db._draft.pitcherByInning[inning] = t.value || null;
+    saveDB(); return;
+  }
+  if (t.dataset.action==='addLateArrival'){
+    const id = t.value; if(!id) return;
+    const g = getActiveGame();
+    g.availableIds.push(id);
+    saveDB(); render();
+  }
+});
+document.addEventListener('input', (e)=>{
+  const t = e.target;
+  if (t.id==='gameOpp'){ db._draft.opponent = t.value; saveDB(); }
+});
+
+/* ---------------- init ---------------- */
+if (!db.roster) db.roster = [];
+if (!db.games) db.games = [];
+if (!db.activeTab) db.activeTab = 'roster';
+render();
+
+})();
+</script>
+</body>
+</html>
