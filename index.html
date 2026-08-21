@@ -191,7 +191,11 @@ function defaultDB(){
   return { roster: [], games: [], currentGameId: null, activeTab: 'roster', importedSchedule: [] };
 }
 function parseGCSchedule(text){
-  const events = String(text||'').split('BEGIN:VEVENT').slice(1);
+  const t = String(text||'');
+  return t.includes('BEGIN:VCALENDAR') ? parseGCIcs(t) : parseGCSchedulePage(t);
+}
+function parseGCIcs(text){
+  const events = text.split('BEGIN:VEVENT').slice(1);
   const games = [];
   for (const ev of events){
     const summaryMatch = ev.match(/SUMMARY:(.*)/);
@@ -208,6 +212,34 @@ function parseGCSchedule(text){
     if (isNaN(d.getTime())) continue;
     const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     games.push({ date: localDate, opponent });
+  }
+  games.sort((a,b)=> a.date.localeCompare(b.date));
+  return games;
+}
+// Parses text copied straight off a GameChanger team's public "Schedule" page, e.g.
+//   August 2026
+//   SAT
+//   22
+//   @ Yellow Jackets
+//   12:45 PM
+const GC_MONTHS = {january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,september:8,october:9,november:10,december:11};
+function parseGCSchedulePage(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const monthRe = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})$/i;
+  const dayRe = /^(SUN|MON|TUE|WED|THU|FRI|SAT)$/i;
+  const games = [];
+  let curYear = null, curMonth = null;
+  for (let i=0; i<lines.length; i++){
+    const mh = lines[i].match(monthRe);
+    if (mh){ curMonth = GC_MONTHS[mh[1].toLowerCase()]; curYear = Number(mh[2]); continue; }
+    if (curMonth==null || !dayRe.test(lines[i])) continue;
+    const dayNumLine = lines[i+1];
+    const oppLine = lines[i+2];
+    if (!dayNumLine || !/^\d{1,2}$/.test(dayNumLine) || !oppLine) continue;
+    const opponent = oppLine.replace(/^@\s*/,'').replace(/^vs\.?\s*/i,'').trim();
+    if (!opponent) continue;
+    const date = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(Number(dayNumLine)).padStart(2,'0')}`;
+    games.push({ date, opponent });
   }
   games.sort((a,b)=> a.date.localeCompare(b.date));
   return games;
@@ -511,8 +543,8 @@ function renderGameSetup(){
     <h2 class="section">New Game Setup</h2>
     <details class="card">
       <summary style="font-weight:700;cursor:pointer">📅 Import schedule from GameChanger (optional)</summary>
-      <div class="sub" style="margin:8px 0">One-time setup: in GameChanger, go to Settings → Schedule Sync, open the calendar link in a browser tab, select all the text it shows and copy it, then paste it below. Only games (not practices) get imported.</div>
-      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste the BEGIN:VCALENDAR ... text here"></textarea>
+      <div class="sub" style="margin:8px 0">Open your team's public GameChanger schedule page, select all the text on it (games and dates), copy it, and paste below. Only games (not practices) get imported. Re-paste any time to refresh.</div>
+      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste your schedule text here"></textarea>
       <button class="btn secondary small" style="margin-top:8px" data-action="importSchedule">Parse Schedule</button>
       ${schedule.length ? `<div class="sub" style="margin-top:8px">${schedule.length} game(s) found — pick one below to auto-fill date/opponent.</div>` : ''}
     </details>
