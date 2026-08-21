@@ -187,8 +187,21 @@ function uid(){
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2);
 }
+// Skittles Fall 2026 schedule, confirmed from the team's GameChanger page — used to
+// pre-fill the schedule picker so there's nothing to import for this season. Re-paste
+// an updated schedule any time (see the import box in Game setup) to override this.
+const DEFAULT_SCHEDULE = [
+  { date: '2026-08-22', opponent: 'Yellow Jackets' },
+  { date: '2026-08-29', opponent: 'KitKats' },
+  { date: '2026-09-12', opponent: 'Hurricanes' },
+  { date: '2026-09-19', opponent: 'Lollipops' },
+  { date: '2026-09-26', opponent: 'Taffys' },
+  { date: '2026-10-03', opponent: 'Yellow Jackets' },
+  { date: '2026-10-10', opponent: 'KitKats' },
+  { date: '2026-10-17', opponent: 'Hurricanes' }
+];
 function defaultDB(){
-  return { roster: [], games: [], currentGameId: null, activeTab: 'roster', importedSchedule: [] };
+  return { roster: [], games: [], currentGameId: null, activeTab: 'roster', importedSchedule: DEFAULT_SCHEDULE.slice() };
 }
 function parseGCSchedule(text){
   const t = String(text||'');
@@ -541,20 +554,14 @@ function renderGameSetup(){
   const schedule = db.importedSchedule || [];
   return `
     <h2 class="section">New Game Setup</h2>
-    <details class="card">
-      <summary style="font-weight:700;cursor:pointer">📅 Import schedule from GameChanger (optional)</summary>
-      <div class="sub" style="margin:8px 0">Open your team's public GameChanger schedule page, select all the text on it (games and dates), copy it, and paste below. Only games (not practices) get imported. Re-paste any time to refresh.</div>
-      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste your schedule text here"></textarea>
-      <button class="btn secondary small" style="margin-top:8px" data-action="importSchedule">Parse Schedule</button>
-      ${schedule.length ? `<div class="sub" style="margin-top:8px">${schedule.length} game(s) found — pick one below to auto-fill date/opponent.</div>` : ''}
-    </details>
     <div class="card">
       ${schedule.length ? `
-      <label class="field">Pick from imported schedule</label>
+      <label class="field">Which game is this?</label>
       <select data-action="pickScheduleGame">
-        <option value="">— choose a game —</option>
+        <option value="">— choose from the season schedule —</option>
         ${schedule.map((sg,idx)=>`<option value="${idx}">${fmtDate(sg.date)} vs ${esc(sg.opponent)}</option>`).join('')}
       </select>
+      <div class="sub" style="margin:6px 0 10px">Picking one fills in the date and opponent below — you can still edit them.</div>
       ` : ''}
       <label class="field">Date</label>
       <input type="date" id="gameDate" value="${draft.date}" data-action="setDraftDate">
@@ -563,6 +570,12 @@ function renderGameSetup(){
       <label class="field">Number of Innings</label>
       <input type="number" min="1" max="9" value="${draft.innings}" data-action="setDraftInnings">
     </div>
+    <details class="card">
+      <summary style="font-weight:700;cursor:pointer">📅 Update schedule from GameChanger</summary>
+      <div class="sub" style="margin:8px 0">The season schedule above is pre-loaded already. Only use this if it changes — open your team's public GameChanger schedule page in a browser (not the app), select all the text on it, copy it, and paste below. Only games (not practices) get imported.</div>
+      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste your schedule text here"></textarea>
+      <button class="btn secondary small" style="margin-top:8px" data-action="importSchedule">Parse &amp; Replace Schedule</button>
+    </details>
 
     <h2 class="section">Who's Available Today?</h2>
     <div class="btnrow" style="margin-bottom:8px">
