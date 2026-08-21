@@ -160,14 +160,27 @@
 "use strict";
 
 /* ---------------- constants ---------------- */
-const POS_FIELD = ['C','1B','2B','3B','SS','LF','RF','CF'];
-const POS_ALL = ['P', ...POS_FIELD];
+// Superset of every non-pitcher position that can ever appear, for season-stats aggregation
+// (any single inning only uses a subset — see fieldPositionsForCount).
+const POS_FIELD_ALL = ['C','1B','2B','3B','SS','LF','CF','RF','LC','RC'];
+const POS_ALL = ['P', ...POS_FIELD_ALL];
 const STORAGE_KEY = 'lineupAppData_v1';
 const POS_COLORS = {
   P:'#fb8c00', C:'#8e24aa', '1B':'#e53935', '2B':'#43a047', '3B':'#1e88e5',
-  SS:'#d81b60', LF:'#fdd835', RF:'#00acc1', CF:'#7cb342'
+  SS:'#d81b60', LF:'#fdd835', CF:'#7cb342', RF:'#00acc1', LC:'#3949ab', RC:'#00897b'
 };
 const POS_TEXT = { LF:'#3a3a00' };
+// Which field positions exist, based on how many girls are actively playing this inning
+// (available minus anyone marked Out — includes the pitcher). 9 is the standard game.
+// At 10, CF splits into LC/RC instead of anyone benching. Below 9, positions drop off
+// in this order: RF (at 8), then LF (at 7), then CF (at 6).
+function fieldPositionsForCount(n){
+  if (n >= 10) return ['C','1B','2B','3B','SS','LF','LC','RC','RF'];
+  if (n === 9) return ['C','1B','2B','3B','SS','LF','CF','RF'];
+  if (n === 8) return ['C','1B','2B','3B','SS','LF','CF'];
+  if (n === 7) return ['C','1B','2B','3B','SS','CF'];
+  return ['C','1B','2B','3B','SS']; // n <= 6
+}
 
 /* ---------------- storage ---------------- */
 function uid(){
@@ -175,7 +188,29 @@ function uid(){
   return 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2);
 }
 function defaultDB(){
-  return { roster: [], games: [], currentGameId: null, activeTab: 'roster' };
+  return { roster: [], games: [], currentGameId: null, activeTab: 'roster', importedSchedule: [] };
+}
+function parseGCSchedule(text){
+  const events = String(text||'').split('BEGIN:VEVENT').slice(1);
+  const games = [];
+  for (const ev of events){
+    const summaryMatch = ev.match(/SUMMARY:(.*)/);
+    const dtMatch = ev.match(/DTSTART[^:\r\n]*:(\d{8}T\d{6})Z?/);
+    if (!summaryMatch || !dtMatch) continue;
+    const summary = summaryMatch[1].trim();
+    const atIdx = summary.indexOf('@');
+    if (atIdx === -1) continue; // no "@ Opponent" means it's a practice/other event, not a game
+    const opponent = summary.slice(atIdx+1).trim();
+    if (!opponent) continue;
+    const raw = dtMatch[1];
+    const iso = `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}:${raw.slice(13,15)}Z`;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) continue;
+    const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    games.push({ date: localDate, opponent });
+  }
+  games.sort((a,b)=> a.date.localeCompare(b.date));
+  return games;
 }
 let db = loadDB();
 function loadDB(){
@@ -198,6 +233,18 @@ function activeRoster(){ return db.roster.filter(p=>p.active); }
 function getGame(id){ return db.games.find(g=>g.id===id); }
 function getActiveGame(){ return db.currentGameId ? getGame(db.currentGameId) : null; }
 
+/* ---------------- game ball ---------------- */
+function gameBallHistory(){
+  // playerId -> { date, opponent, reason } for whichever game already awarded her one
+  const map = {};
+  for (const g of db.games){
+    if (g.gameBall && g.gameBall.playerId){
+      map[g.gameBall.playerId] = { date: g.date, opponent: g.opponent, reason: g.gameBall.reason||'' };
+    }
+  }
+  return map;
+}
+
 /* ---------------- stats engine ---------------- */
 function blankStatEntry(){ return { positions:{}, bench:0, totalInnings:0, games:0 }; }
 
@@ -217,7 +264,7 @@ function computeBaseStats(excludeGameId){
         if (!stats[entry._pitcher]) stats[entry._pitcher] = blankStatEntry();
         addInningToStats(stats, entry._pitcher, 'P');
       }
-      for (const pos of POS_FIELD){
+      for (const pos of (entry._positions || POS_FIELD_ALL)){
         const pid = entry[pos];
         if (pid){
           if (!stats[pid]) stats[pid] = blankStatEntry();
@@ -247,7 +294,7 @@ function cloneStats(stats){
 
 /* ---------------- lineup generation engine ---------------- */
 function pickBench(pool, statsMap, alreadyBenchedThisGame, benchNeeded){
-  if (benchNeeded <= 0) return [];
+  if (benchNeeded <= 0) return { chosen: [], forced: false };
   let candidates = pool.filter(pid => !alreadyBenchedThisGame.has(pid));
   let forced = false;
   if (candidates.length < benchNeeded){ candidates = pool.slice(); forced = true; }
@@ -256,12 +303,12 @@ function pickBench(pool, statsMap, alreadyBenchedThisGame, benchNeeded){
   const chosen = scored.slice(0, benchNeeded).map(s=>s.pid);
   return { chosen, forced };
 }
-function assignPositions(pool, statsMap){
+function assignPositions(pool, positions, statsMap){
   const pairs = [];
   for (const pid of pool){
     const s = statsMap[pid] || blankStatEntry();
     const total = s.totalInnings;
-    for (const pos of POS_FIELD){
+    for (const pos of positions){
       const pct = total > 0 ? ((s.positions[pos]||0) / total) : 0;
       pairs.push({ pid, pos, score: pct + Math.random()*0.22 });
     }
@@ -275,7 +322,7 @@ function assignPositions(pool, statsMap){
     assigned[pr.pos] = pr.pid;
     usedPlayers.add(pr.pid);
     usedPositions.add(pr.pos);
-    if (usedPlayers.size === pool.length && usedPositions.size === POS_FIELD.length) break;
+    if (usedPlayers.size === pool.length && usedPositions.size === positions.length) break;
   }
   return assigned;
 }
@@ -290,17 +337,19 @@ function benchedSetBefore(game, inningNum){
 function generateInning(game, i, cumulativeStats){
   const pitcherId = (game.pitcherByInning && game.pitcherByInning[i]) || null;
   const outSet = new Set(game.outIds||[]);
-  const pool = (game.availableIds||[]).filter(pid => pid!==pitcherId && !outSet.has(pid));
+  const activePool = (game.availableIds||[]).filter(pid => !outSet.has(pid));
+  const positions = fieldPositionsForCount(activePool.length);
+  const pool = activePool.filter(pid => pid !== pitcherId);
   const already = benchedSetBefore(game, i);
-  const benchNeeded = Math.max(0, pool.length - POS_FIELD.length);
+  const benchNeeded = Math.max(0, pool.length - positions.length);
   const benchResult = pickBench(pool, cumulativeStats, already, benchNeeded);
   const bench = benchResult.chosen;
   const benchSet = new Set(bench);
   const fieldPool = pool.filter(pid => !benchSet.has(pid));
-  const assigned = assignPositions(fieldPool, cumulativeStats);
-  game.fieldByInning[i] = Object.assign({}, assigned, { _bench: bench, _pitcher: pitcherId, _forcedRepeatBench: benchResult.forced });
+  const assigned = assignPositions(fieldPool, positions, cumulativeStats);
+  game.fieldByInning[i] = Object.assign({}, assigned, { _bench: bench, _pitcher: pitcherId, _forcedRepeatBench: benchResult.forced, _positions: positions });
   if (pitcherId){ if(!cumulativeStats[pitcherId]) cumulativeStats[pitcherId]=blankStatEntry(); addInningToStats(cumulativeStats, pitcherId, 'P'); }
-  for (const pos of POS_FIELD){
+  for (const pos of positions){
     const pid = assigned[pos];
     if (pid){ if(!cumulativeStats[pid]) cumulativeStats[pid]=blankStatEntry(); addInningToStats(cumulativeStats, pid, pos); }
   }
@@ -317,7 +366,7 @@ function statsThroughInning(game, uptoExclusive){
     const entry = game.fieldByInning[k];
     if (!entry) continue;
     if (entry._pitcher){ if(!base[entry._pitcher]) base[entry._pitcher]=blankStatEntry(); addInningToStats(base, entry._pitcher, 'P'); }
-    for (const pos of POS_FIELD){ const pid=entry[pos]; if(pid){ if(!base[pid]) base[pid]=blankStatEntry(); addInningToStats(base, pid, pos);} }
+    for (const pos of (entry._positions || POS_FIELD_ALL)){ const pid=entry[pos]; if(pid){ if(!base[pid]) base[pid]=blankStatEntry(); addInningToStats(base, pid, pos);} }
     for (const pid of (entry._bench||[])){ if(!base[pid]) base[pid]=blankStatEntry(); base[pid].bench++; }
   }
   return base;
@@ -457,9 +506,24 @@ function renderGameSetup(){
   const noPitchersWarning = draft.availableIds.length && !eligiblePitchers.length
     ? `<div class="banner warn">No available players are marked as eligible pitchers yet. Set pitchers in the Roster tab.</div>` : '';
 
+  const schedule = db.importedSchedule || [];
   return `
     <h2 class="section">New Game Setup</h2>
+    <details class="card">
+      <summary style="font-weight:700;cursor:pointer">📅 Import schedule from GameChanger (optional)</summary>
+      <div class="sub" style="margin:8px 0">One-time setup: in GameChanger, go to Settings → Schedule Sync, open the calendar link in a browser tab, select all the text it shows and copy it, then paste it below. Only games (not practices) get imported.</div>
+      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste the BEGIN:VCALENDAR ... text here"></textarea>
+      <button class="btn secondary small" style="margin-top:8px" data-action="importSchedule">Parse Schedule</button>
+      ${schedule.length ? `<div class="sub" style="margin-top:8px">${schedule.length} game(s) found — pick one below to auto-fill date/opponent.</div>` : ''}
+    </details>
     <div class="card">
+      ${schedule.length ? `
+      <label class="field">Pick from imported schedule</label>
+      <select data-action="pickScheduleGame">
+        <option value="">— choose a game —</option>
+        ${schedule.map((sg,idx)=>`<option value="${idx}">${fmtDate(sg.date)} vs ${esc(sg.opponent)}</option>`).join('')}
+      </select>
+      ` : ''}
       <label class="field">Date</label>
       <input type="date" id="gameDate" value="${draft.date}" data-action="setDraftDate">
       <label class="field">Opponent (optional)</label>
@@ -516,6 +580,8 @@ function renderField(){
       </select>` : ''}
   </div>`;
 
+  out += renderGameBallCard(g);
+
   for (let i=1;i<=g.innings;i++){
     const entry = g.fieldByInning[i];
     const isCurrent = i===g.currentInning;
@@ -535,7 +601,8 @@ function renderField(){
           <span class="sub">✎</span>
         </div>`;
       };
-      out += `<div class="poslist">${posrow(null,true)}${POS_FIELD.map(p=>posrow(p,false)).join('')}</div>`;
+      const inningPositions = entry._positions || ['C','1B','2B','3B','SS','LF','CF','RF'];
+      out += `<div class="poslist">${posrow(null,true)}${inningPositions.map(p=>posrow(p,false)).join('')}</div>`;
       out += `<div class="benchbox"><b>Bench:</b> ${
         (entry._bench&&entry._bench.length) ? entry._bench.map(pid=>`<span class="benchname">${esc(playerName(pid))}</span>`).join('') : '<span class="sub">none</span>'
       }${entry._forcedRepeatBench? ' <div class="banner warn" style="margin-top:6px">Not enough players to avoid a 2nd bench inning for someone.</div>':''}</div>`;
@@ -547,6 +614,29 @@ function renderField(){
     out += `</div>`;
   }
   return out;
+}
+
+/* ---------------- render: game ball card ---------------- */
+function renderGameBallCard(g){
+  const history = gameBallHistory();
+  const gb = g.gameBall || { playerId: null, reason: '' };
+  const stillDue = g.availableIds.filter(pid => !history[pid] && pid !== gb.playerId);
+  const opts = g.availableIds.map(pid=>{
+    const already = history[pid] && pid !== gb.playerId;
+    const label = playerName(pid) + (already ? ` (already got one — ${fmtDate(history[pid].date)})` : '');
+    return `<option value="${pid}" ${gb.playerId===pid?'selected':''}>${esc(label)}</option>`;
+  }).join('');
+  return `<div class="card">
+    <div class="row"><b>🏆 Game Ball</b></div>
+    <label class="field">Who's getting it today?</label>
+    <select data-action="setGameBallPlayer">
+      <option value="">— not yet awarded —</option>
+      ${opts}
+    </select>
+    <label class="field">Why? (saved to her season history)</label>
+    <input type="text" data-action="setGameBallReason" value="${esc(gb.reason)}" placeholder="e.g. great hustle down the line">
+    ${stillDue.length ? `<div class="sub" style="margin-top:8px">Haven't gotten one yet this season (of today's players): ${stillDue.map(pid=>esc(playerName(pid))).join(', ')}</div>` : `<div class="sub" style="margin-top:8px">Everyone available today has already received one this season.</div>`}
+  </div>`;
 }
 
 /* ---------------- render: batting ---------------- */
@@ -601,7 +691,16 @@ function renderStats(){
       <div class="poschips">${posChips}</div>
     </details>`;
   }).join('');
-  return `<h2 class="section">Season Stats</h2>${cards}`;
+  const history = gameBallHistory();
+  const ballRows = activeRoster().slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+    const h = history[p.id];
+    return `<div class="playerchip" style="display:block">
+      <div class="row"><span class="name">${esc(p.name)}</span><span class="pill ${h?'':'inactive'}">${h?'RECEIVED':'not yet'}</span></div>
+      ${h ? `<div class="sub" style="margin-top:4px">${fmtDate(h.date)}${h.opponent?(' vs '+esc(h.opponent)):''}${h.reason?(' — '+esc(h.reason)):''}</div>` : ''}
+    </div>`;
+  }).join('');
+  const ballSection = `<h2 class="section">🏆 Game Ball Tracker</h2><div class="card">${ballRows || '<div class="sub">No active players.</div>'}</div>`;
+  return `${ballSection}<h2 class="section">Season Stats</h2>${cards}`;
 }
 
 /* ---------------- swap modal ---------------- */
@@ -627,9 +726,10 @@ function openSwapModal(inning, pos, isPitcher){
   const outSet = new Set(g.outIds||[]);
   const pool = g.availableIds.filter(pid=>!outSet.has(pid) && pid!==entry._pitcher);
   const currentPid = entry[pos];
+  const inningPositions = entry._positions || POS_FIELD_ALL;
   const options = pool.map(pid=>{
     let loc = 'BENCH';
-    for (const pp of POS_FIELD){ if (entry[pp]===pid){ loc = pp; break; } }
+    for (const pp of inningPositions){ if (entry[pp]===pid){ loc = pp; break; } }
     return {pid, loc};
   });
   const html = options.map(o=>`<div class="opt" data-swap-target="${o.pid}">
@@ -647,7 +747,7 @@ function openSwapModal(inning, pos, isPitcher){
 }
 function swapPlayers(entry, pos, currentPid, targetPid){
   let targetLoc = null;
-  for (const pp of POS_FIELD){ if (entry[pp]===targetPid){ targetLoc = pp; break; } }
+  for (const pp of (entry._positions || POS_FIELD_ALL)){ if (entry[pp]===targetPid){ targetLoc = pp; break; } }
   if (targetLoc===null && entry._bench.includes(targetPid)) targetLoc = 'BENCH';
   entry[pos] = targetPid;
   if (targetLoc==='BENCH'){
@@ -709,6 +809,14 @@ document.addEventListener('click', (e)=>{
     }
     case 'selectAllAvail': { db._draft.availableIds = activeRoster().map(p=>p.id); saveDB(); render(); break; }
     case 'selectNoneAvail': { db._draft.availableIds = []; saveDB(); render(); break; }
+    case 'importSchedule': {
+      const ta = document.getElementById('icsPaste');
+      const parsed = parseGCSchedule(ta ? ta.value : '');
+      if (!parsed.length){ alert('No games found in that text. Make sure you pasted the full calendar text (starts with BEGIN:VCALENDAR).'); return; }
+      db.importedSchedule = parsed;
+      saveDB(); render();
+      break;
+    }
     case 'generateGame': {
       const draft = db._draft;
       if (!draft.availableIds.length) return;
@@ -716,7 +824,8 @@ document.addEventListener('click', (e)=>{
         id: uid(), date: draft.date, opponent: draft.opponent, innings: Number(draft.innings)||6,
         availableIds: draft.availableIds.slice(), pitcherByInning: Object.assign({}, draft.pitcherByInning),
         fieldByInning: {}, outIds: [], currentInning: 1,
-        battingOrder: [], lastOutIndex: null
+        battingOrder: [], lastOutIndex: null,
+        gameBall: { playerId: null, reason: '' }
       };
       generateAllInnings(game);
       db.games.push(game);
@@ -799,10 +908,27 @@ document.addEventListener('change', (e)=>{
     g.availableIds.push(id);
     saveDB(); render();
   }
+  if (t.dataset.action==='pickScheduleGame'){
+    const idx = t.value; if (idx==='') return;
+    const sg = (db.importedSchedule||[])[Number(idx)];
+    if (sg){ db._draft.date = sg.date; db._draft.opponent = sg.opponent; saveDB(); render(); }
+  }
+  if (t.dataset.action==='setGameBallPlayer'){
+    const g = getActiveGame();
+    g.gameBall = g.gameBall || { playerId:null, reason:'' };
+    g.gameBall.playerId = t.value || null;
+    saveDB(); render();
+  }
 });
 document.addEventListener('input', (e)=>{
   const t = e.target;
   if (t.id==='gameOpp'){ db._draft.opponent = t.value; saveDB(); }
+  if (t.dataset.action==='setGameBallReason'){
+    const g = getActiveGame();
+    g.gameBall = g.gameBall || { playerId:null, reason:'' };
+    g.gameBall.reason = t.value;
+    saveDB();
+  }
 });
 
 /* ---------------- init ---------------- */
