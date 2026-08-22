@@ -559,7 +559,7 @@ function renderGameSetup(){
       <label class="field">Opponent (optional)</label>
       <input type="text" id="gameOpp" value="${esc(draft.opponent)}" placeholder="e.g. Riverside" data-action="setDraftOpp">
       <label class="field">Number of Innings (a guess is fine)</label>
-      <input type="number" min="1" max="9" value="${draft.innings}" data-action="setDraftInnings">
+      <input type="number" min="1" max="6" value="${draft.innings}" data-action="setDraftInnings">
       <div class="sub" style="margin-top:6px">Don't know yet? Just guess high — ending the game early only counts the innings you actually reached toward season stats. Pitchers below can be left blank too and set later, inning by inning, from the Field tab.</div>
     </div>
 
@@ -932,7 +932,7 @@ document.addEventListener('change', (e)=>{
   if (t.id==='gameDate'){ db._draft.date = t.value; saveDB(); return; }
   if (t.id==='gameOpp'){ db._draft.opponent = t.value; saveDB(); return; }
   if (t.dataset.action==='setDraftInnings'){
-    let n = Math.max(1, Math.min(9, Number(t.value)||6));
+    let n = Math.max(1, Math.min(6, Number(t.value)||6));
     db._draft.innings = n; saveDB(); render(); return;
   }
   if (t.dataset.action==='setPitcher'){
