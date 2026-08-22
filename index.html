@@ -203,60 +203,6 @@ const DEFAULT_SCHEDULE = [
 function defaultDB(){
   return { roster: [], games: [], currentGameId: null, activeTab: 'roster', importedSchedule: DEFAULT_SCHEDULE.slice() };
 }
-function parseGCSchedule(text){
-  const t = String(text||'');
-  return t.includes('BEGIN:VCALENDAR') ? parseGCIcs(t) : parseGCSchedulePage(t);
-}
-function parseGCIcs(text){
-  const events = text.split('BEGIN:VEVENT').slice(1);
-  const games = [];
-  for (const ev of events){
-    const summaryMatch = ev.match(/SUMMARY:(.*)/);
-    const dtMatch = ev.match(/DTSTART[^:\r\n]*:(\d{8}T\d{6})Z?/);
-    if (!summaryMatch || !dtMatch) continue;
-    const summary = summaryMatch[1].trim();
-    const atIdx = summary.indexOf('@');
-    if (atIdx === -1) continue; // no "@ Opponent" means it's a practice/other event, not a game
-    const opponent = summary.slice(atIdx+1).trim();
-    if (!opponent) continue;
-    const raw = dtMatch[1];
-    const iso = `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}:${raw.slice(13,15)}Z`;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) continue;
-    const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    games.push({ date: localDate, opponent });
-  }
-  games.sort((a,b)=> a.date.localeCompare(b.date));
-  return games;
-}
-// Parses text copied straight off a GameChanger team's public "Schedule" page, e.g.
-//   August 2026
-//   SAT
-//   22
-//   @ Yellow Jackets
-//   12:45 PM
-const GC_MONTHS = {january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,september:8,october:9,november:10,december:11};
-function parseGCSchedulePage(text){
-  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const monthRe = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})$/i;
-  const dayRe = /^(SUN|MON|TUE|WED|THU|FRI|SAT)$/i;
-  const games = [];
-  let curYear = null, curMonth = null;
-  for (let i=0; i<lines.length; i++){
-    const mh = lines[i].match(monthRe);
-    if (mh){ curMonth = GC_MONTHS[mh[1].toLowerCase()]; curYear = Number(mh[2]); continue; }
-    if (curMonth==null || !dayRe.test(lines[i])) continue;
-    const dayNumLine = lines[i+1];
-    const oppLine = lines[i+2];
-    if (!dayNumLine || !/^\d{1,2}$/.test(dayNumLine) || !oppLine) continue;
-    const opponent = oppLine.replace(/^@\s*/,'').replace(/^vs\.?\s*/i,'').trim();
-    if (!opponent) continue;
-    const date = `${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(Number(dayNumLine)).padStart(2,'0')}`;
-    games.push({ date, opponent });
-  }
-  games.sort((a,b)=> a.date.localeCompare(b.date));
-  return games;
-}
 let db = loadDB();
 function loadDB(){
   try{
@@ -379,6 +325,27 @@ function benchedSetBefore(game, inningNum){
   }
   return s;
 }
+function caughtSetBefore(game, inningNum){
+  const s = new Set();
+  for (let k=1; k<inningNum; k++){
+    const entry = game.fieldByInning[k];
+    if (entry && entry.C) s.add(entry.C);
+  }
+  return s;
+}
+function pickCatcher(pool, statsMap, alreadyCaught){
+  let candidates = pool.filter(pid => !alreadyCaught.has(pid));
+  let forced = false;
+  if (!candidates.length){ candidates = pool.slice(); forced = true; }
+  let catcher = null, bestScore = Infinity;
+  for (const pid of candidates){
+    const s = statsMap[pid] || blankStatEntry();
+    const pct = s.totalInnings > 0 ? ((s.positions.C||0) / s.totalInnings) : 0;
+    const score = pct + Math.random()*0.22;
+    if (score < bestScore){ bestScore = score; catcher = pid; }
+  }
+  return { catcher, forced };
+}
 function generateInning(game, i, cumulativeStats){
   const pitcherId = (game.pitcherByInning && game.pitcherByInning[i]) || null;
   const outSet = new Set(game.outIds||[]);
@@ -397,8 +364,26 @@ function generateInning(game, i, cumulativeStats){
   const bench = benchResult.chosen;
   const benchSet = new Set(bench);
   const fieldPool = pool.filter(pid => !benchSet.has(pid));
-  const assigned = assignPositions(fieldPool, positions, cumulativeStats);
-  game.fieldByInning[i] = Object.assign({}, assigned, { _bench: bench, _pitcher: pitcherId, _forcedRepeatBench: benchResult.forced, _positions: positions });
+
+  // Catcher gets picked first, excluding anyone who's already caught this game (same
+  // balancing score as everyone else — this just adds a no-repeat constraint on top).
+  // The rest of assignPositions runs unchanged on whoever's left.
+  let assigned = {};
+  let restPool = fieldPool, restPositions = positions;
+  let catcherForced = false;
+  if (positions.includes('C')){
+    const alreadyCaught = caughtSetBefore(game, i);
+    const cResult = pickCatcher(fieldPool, cumulativeStats, alreadyCaught);
+    catcherForced = cResult.forced;
+    if (cResult.catcher){
+      assigned.C = cResult.catcher;
+      restPool = fieldPool.filter(pid => pid !== cResult.catcher);
+      restPositions = positions.filter(p => p !== 'C');
+    }
+  }
+  Object.assign(assigned, assignPositions(restPool, restPositions, cumulativeStats));
+
+  game.fieldByInning[i] = Object.assign({}, assigned, { _bench: bench, _pitcher: pitcherId, _forcedRepeatBench: benchResult.forced, _forcedRepeatCatcher: catcherForced, _positions: positions });
   if (pitcherId){ if(!cumulativeStats[pitcherId]) cumulativeStats[pitcherId]=blankStatEntry(); addInningToStats(cumulativeStats, pitcherId, 'P'); }
   for (const pos of positions){
     const pid = assigned[pos];
@@ -577,12 +562,6 @@ function renderGameSetup(){
       <input type="number" min="1" max="9" value="${draft.innings}" data-action="setDraftInnings">
       <div class="sub" style="margin-top:6px">Don't know yet? Just guess high — ending the game early only counts the innings you actually reached toward season stats. Pitchers below can be left blank too and set later, inning by inning, from the Field tab.</div>
     </div>
-    <details class="card">
-      <summary style="font-weight:700;cursor:pointer">📅 Update schedule from GameChanger</summary>
-      <div class="sub" style="margin:8px 0">The season schedule above is pre-loaded already. Only use this if it changes — open your team's public GameChanger schedule page in a browser (not the app), select all the text on it, copy it, and paste below. Only games (not practices) get imported.</div>
-      <textarea id="icsPaste" rows="3" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:9px;font-size:12px" placeholder="Paste your schedule text here"></textarea>
-      <button class="btn secondary small" style="margin-top:8px" data-action="importSchedule">Parse &amp; Replace Schedule</button>
-    </details>
 
     <h2 class="section">Who's Available Today?</h2>
     <div class="btnrow" style="margin-bottom:8px">
@@ -664,7 +643,7 @@ function renderField(){
       out += `<div class="poslist">${posrow(null,true)}${inningPositions.map(p=>posrow(p,false)).join('')}</div>`;
       out += `<div class="benchbox"><b>Bench:</b> ${
         (entry._bench&&entry._bench.length) ? entry._bench.map(pid=>`<span class="benchname">${esc(playerName(pid))}</span>`).join('') : '<span class="sub">none</span>'
-      }${entry._forcedRepeatBench? ' <div class="banner warn" style="margin-top:6px">Not enough players to avoid a 2nd bench inning for someone.</div>':''}</div>`;
+      }${entry._forcedRepeatBench? ' <div class="banner warn" style="margin-top:6px">Not enough players to avoid a 2nd bench inning for someone.</div>':''}${entry._forcedRepeatCatcher? ' <div class="banner warn" style="margin-top:6px">Everyone eligible has already caught this game — someone had to repeat.</div>':''}</div>`;
       out += `<div class="toolbar">
         <button class="btn small secondary" data-action="reshuffleInning" data-inning="${i}">🔀 Reshuffle This Inning</button>
         <button class="btn small secondary" data-action="reshuffleFrom" data-inning="${i}">⏩ Reshuffle From Here to End</button>
@@ -876,14 +855,6 @@ document.addEventListener('click', (e)=>{
     }
     case 'selectAllAvail': { db._draft.availableIds = activeRoster().map(p=>p.id); saveDB(); render(); break; }
     case 'selectNoneAvail': { db._draft.availableIds = []; saveDB(); render(); break; }
-    case 'importSchedule': {
-      const ta = document.getElementById('icsPaste');
-      const parsed = parseGCSchedule(ta ? ta.value : '');
-      if (!parsed.length){ alert('No games found in that text. Make sure you pasted the full calendar text (starts with BEGIN:VCALENDAR).'); return; }
-      db.importedSchedule = parsed;
-      saveDB(); render();
-      break;
-    }
     case 'generateGame': {
       const draft = db._draft;
       if (!draft.availableIds.length) return;
