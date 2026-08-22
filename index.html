@@ -383,6 +383,12 @@ function generateInning(game, i, cumulativeStats){
   const pitcherId = (game.pitcherByInning && game.pitcherByInning[i]) || null;
   const outSet = new Set(game.outIds||[]);
   const activePool = (game.availableIds||[]).filter(pid => !outSet.has(pid));
+  if (!pitcherId){
+    // No pitcher assigned yet for this inning — don't guess. Leave it unfilled rather
+    // than treating the would-be pitcher as an extra fielder (which forces a bogus bench).
+    game.fieldByInning[i] = { _bench: [], _pitcher: null, _positions: [], _pitcherMissing: true };
+    return;
+  }
   const positions = fieldPositionsForCount(activePool.length);
   const pool = activePool.filter(pid => pid !== pitcherId);
   const already = benchedSetBefore(game, i);
@@ -567,8 +573,9 @@ function renderGameSetup(){
       <input type="date" id="gameDate" value="${draft.date}" data-action="setDraftDate">
       <label class="field">Opponent (optional)</label>
       <input type="text" id="gameOpp" value="${esc(draft.opponent)}" placeholder="e.g. Riverside" data-action="setDraftOpp">
-      <label class="field">Number of Innings</label>
+      <label class="field">Number of Innings (a guess is fine)</label>
       <input type="number" min="1" max="9" value="${draft.innings}" data-action="setDraftInnings">
+      <div class="sub" style="margin-top:6px">Don't know yet? Just guess high — ending the game early only counts the innings you actually reached toward season stats. Pitchers below can be left blank too and set later, inning by inning, from the Field tab.</div>
     </div>
     <details class="card">
       <summary style="font-weight:700;cursor:pointer">📅 Update schedule from GameChanger</summary>
@@ -634,6 +641,13 @@ function renderField(){
       <h3>Inning ${i} ${isCurrent?'· current':''}</h3>`;
     if (!entry){
       out += `<div class="empty-state" style="padding:14px">Not generated</div>`;
+    } else if (entry._pitcherMissing){
+      out += `<div class="posrow" data-action="openSwap" data-inning="${i}" data-pos="" data-ispitcher="1">
+        <span class="poslabel" style="background:${POS_COLORS.P};color:#fff">P</span>
+        <span class="pname empty">tap to set pitcher</span>
+        <span class="sub">✎</span>
+      </div>
+      <div class="sub" style="margin-top:8px">Fielding positions and bench fill in automatically once a pitcher is set for this inning.</div>`;
     } else {
       const posrow = (pos, isPitcher)=>{
         const pid = isPitcher ? entry._pitcher : entry[pos];
@@ -754,14 +768,16 @@ function openSwapModal(inning, pos, isPitcher){
   const entry = g.fieldByInning[inning];
   if (!entry) return;
   if (isPitcher){
-    showModal(`Swap Pitcher — Inning ${inning}`, `<div class="sub">Pitchers are locked manually. Go to the Game tab setup to change, or edit below for this inning only.</div>
+    showModal(`Set Pitcher — Inning ${inning}`, `<div class="sub">Changing this regenerates the fielding/bench for this inning only.</div>
       <div class="opt" data-swap-target="__none__">— none —</div>
       ${g.availableIds.filter(pid=>{const p=getPlayer(pid); return p && p.eligiblePitcher;}).map(pid=>`<div class="opt" data-swap-target="${pid}">${esc(playerName(pid))}</div>`).join('')}
     `, (root)=>{
       root.querySelectorAll('[data-swap-target]').forEach(el=>{
         el.addEventListener('click', ()=>{
           const target = el.getAttribute('data-swap-target');
-          entry._pitcher = target==='__none__'? null : target;
+          g.pitcherByInning = g.pitcherByInning || {};
+          g.pitcherByInning[inning] = target==='__none__'? null : target;
+          regenerateSingleInning(g, inning);
           saveDB(); closeModal(); render();
         });
       });
@@ -840,7 +856,13 @@ document.addEventListener('click', (e)=>{
     }
     case 'goTab': { db.activeTab = el.dataset.tab; saveDB(); render(); break; }
     case 'endGame': {
-      if (confirmAction('End and archive this game? Stats stay saved; you can start a new game after.')){
+      const g = getActiveGame();
+      const lastInning = g.currentInning;
+      if (confirmAction(`End and archive this game? Only innings 1–${lastInning} (the "Current Inning" marker) will count toward season stats — anything planned beyond that is discarded, not counted as played. Use ◀ Prev first if inning ${lastInning} didn't actually happen.`)){
+        for (const key of Object.keys(g.fieldByInning)){
+          if (Number(key) > lastInning) delete g.fieldByInning[key];
+        }
+        g.innings = lastInning;
         db.currentGameId = null; db._draft = null; saveDB(); render();
       }
       break;
